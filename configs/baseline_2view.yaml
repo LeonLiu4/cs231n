@@ -1,0 +1,37 @@
+experiment:
+  name: baseline_2view_mean_pool
+  seed: 42
+  output_dir: runs/baseline_2view
+
+data:
+  processed_dir: data/processed_2view
+  category: "03001627"
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 2
+  augment: true
+
+model:
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: cls              # same as working single-view baseline
+  head_type: mlp
+  unfreeze_last_blocks: 0
+  fusion: concat                   # don't average seg + view2; concatenate instead
+  fusion_weights: [0.7, 0.3]       # used if fusion=weighted_mean
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 1.0e-3
+  weight_decay: 0.01
+  num_workers: 0
+  scheduler: cosine
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01

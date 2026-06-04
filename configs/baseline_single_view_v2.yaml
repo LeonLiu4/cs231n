@@ -1,0 +1,41 @@
+experiment:
+  name: single_view_baseline_v2
+  seed: 42
+  output_dir: runs/single_view_baseline_v2
+
+data:
+  shapenet_root: data/ShapeNetCore.v2
+  processed_dir: data/processed
+  category: "03001627"
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 1
+  augment: true
+
+model:
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: cls_patch_mean      # CLS + mean patch tokens (more spatial info)
+  head_type: folding                 # FoldingNet-style decoder
+  unfreeze_last_blocks: 2          # finetune last 2 ViT blocks
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  head_lr: 3.0e-4
+  backbone_lr: 1.0e-5
+  weight_decay: 0.01
+  num_workers: 0
+  scheduler: plateau                 # drop LR when val plateaus (not cosine decay)
+  plateau_factor: 0.5
+  plateau_patience: 5
+  min_lr: 1.0e-6
+  grad_clip: 1.0
+  early_stopping_patience: 20
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01
