@@ -5,12 +5,12 @@ experiment:
 
 data:
   shapenet_root: data/ShapeNetCore.v2
-  processed_dir: data/processed
-  split_file: data/splits/shapenet_chair.json
+  processed_dir: data/processed_shapenet_1view
   category: "03001627"  # chair
   num_gt_points: 2048
   image_size: 224
   num_views: 1
+  augment: true
   max_train_samples: null
   max_val_samples: null
 

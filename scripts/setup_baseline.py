@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command setup helper for the single-view baseline."""
+"""One-command setup helper for ShapeNetCore baselines."""
 
 from __future__ import annotations
 
@@ -18,53 +18,54 @@ def main() -> None:
     print("Installing Python dependencies...")
     run([sys.executable, "-m", "pip", "install", "-r", str(root / "requirements.txt")])
 
-    print("\nChecking ShapeNet...")
-    run([sys.executable, str(root / "scripts/download_shapenet.py")])
-
-    shapenet_root = root / "data" / "ShapeNetCore.v2"
-    partannotation_root = root / "data" / "PartAnnotation"
-    category_dir = shapenet_root / "03001627"
-
-    if partannotation_root.exists():
-        print("\nPartAnnotation found. Preparing processed subset...")
-        run(
-            [
-                sys.executable,
-                str(root / "scripts/prepare_partannotation.py"),
-                "--max-samples",
-                "100",
-                "--num-views",
-                "1",
-            ]
-        )
-    elif category_dir.exists():
-        print("\nShapeNet found. Preparing a small processed subset (50 train objects)...")
+    shapenet_root = root / "data" / "ShapeNetCore.v2" / "03001627"
+    if shapenet_root.exists():
+        print("\nShapeNetCore found. Preparing 1-view and 2-view processed subsets...")
         run(
             [
                 sys.executable,
                 str(root / "scripts/prepare_dataset.py"),
-                "--max-samples",
-                "50",
                 "--num-views",
-                "8",
+                "1",
+                "--max-samples",
+                "200",
+                "--processed-dir",
+                "data/processed_shapenet_1view",
             ]
-        )
-    else:
-        print(
-            "\nShapeNet not present yet. Running demo smoke test instead.\n"
-            "After downloading ShapeNet, run:\n"
-            "  python scripts/prepare_dataset.py\n"
-            "  python scripts/train_baseline.py\n"
         )
         run(
             [
                 sys.executable,
-                str(root / "scripts/train_baseline.py"),
-                "--demo",
-                "--epochs",
-                "1",
+                str(root / "scripts/prepare_dataset.py"),
+                "--num-views",
+                "2",
+                "--max-samples",
+                "200",
+                "--processed-dir",
+                "data/processed_shapenet_2view",
             ]
         )
+        print("\nSetup complete. Train with:")
+        print("  python scripts/train_baseline.py --config configs/baseline_single_view.yaml")
+        print("  python scripts/train_baseline.py --config configs/baseline_2view.yaml")
+        return
+
+    print(
+        "\nShapeNetCore not found at data/ShapeNetCore.v2/.\n"
+        "Download chairs from Hugging Face:\n"
+        "  hf auth login\n"
+        "  python scripts/download_shapenet_hf.py --categories 03001627\n"
+        "Then re-run: python scripts/setup_baseline.py\n"
+    )
+    run(
+        [
+            sys.executable,
+            str(root / "scripts/train_baseline.py"),
+            "--demo",
+            "--epochs",
+            "1",
+        ]
+    )
 
 
 if __name__ == "__main__":

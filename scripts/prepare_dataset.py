@@ -59,7 +59,7 @@ def process_model(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare ShapeNet renders")
     parser.add_argument("--shapenet-root", type=Path, default=Path("data/ShapeNetCore.v2"))
-    parser.add_argument("--processed-dir", type=Path, default=Path("data/processed"))
+    parser.add_argument("--processed-dir", type=Path, default=Path("data/processed_shapenet_1view"))
     parser.add_argument("--category", type=str, default="03001627")
     parser.add_argument("--num-views", type=int, default=8, help="Render up to N views per object")
     parser.add_argument("--num-gt-points", type=int, default=2048)
@@ -73,7 +73,7 @@ def main() -> None:
     if not model_paths:
         raise FileNotFoundError(
             f"No models found under {args.shapenet_root / args.category}. "
-            "Run scripts/download_shapenet.py first."
+            "Run scripts/download_shapenet_hf.py first."
         )
 
     rng = random.Random(args.seed)
