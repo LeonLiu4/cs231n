@@ -31,6 +31,10 @@ PRESETS = {
         "config": ROOT / "configs/baseline_2view.yaml",
         "checkpoint": ROOT / "runs/baseline_2view/best.pt",
     },
+    "2view_silhouette": {
+        "config": ROOT / "configs/baseline_2view_silhouette.yaml",
+        "checkpoint": ROOT / "runs/baseline_2view_silhouette/best.pt",
+    },
 }
 
 
@@ -196,16 +200,19 @@ def main() -> None:
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
+    device = get_device()
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    if ckpt.get("config") is not None:
+        cfg = ckpt["config"]
+
     eval_cfg = copy.deepcopy(cfg)
     eval_cfg["data"] = copy.deepcopy(cfg["data"])
     eval_cfg["data"]["augment"] = False
 
-    device = get_device()
     train_loader, val_loader = build_dataloaders(eval_cfg, demo=args.demo)
     loader = train_loader if args.split == "train" else val_loader
 
     model = build_model(cfg).to(device)
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 

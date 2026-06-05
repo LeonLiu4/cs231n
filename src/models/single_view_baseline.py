@@ -24,6 +24,8 @@ class SingleViewBaseline(nn.Module):
         feature_mode: str = "cls",
         head_type: str = "mlp",
         unfreeze_last_blocks: int = 0,
+        output_tanh: bool = True,
+        normalize_output: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = DINOv2Encoder(
@@ -37,9 +39,12 @@ class SingleViewBaseline(nn.Module):
             input_dim=self.encoder.out_dim,
             num_points=num_output_points,
             hidden_dim=hidden_dim,
+            output_tanh=output_tanh,
+            normalize_output=normalize_output,
         )
 
     def forward(self, images: torch.Tensor, poses: torch.Tensor | None = None) -> torch.Tensor:
+        del poses  # baseline ignores camera pose; views are in canonical object frame
         if images.ndim == 5:
             images = images[:, 0]
         features = self.encoder(images)

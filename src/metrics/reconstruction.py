@@ -15,9 +15,8 @@ def f_score(
     F-score at threshold relative to bounding box diagonal.
     pred, target: [B, N, 3]
     """
-    combined = torch.cat([pred, target], dim=1)
-    bbox_min = combined.min(dim=1).values
-    bbox_max = combined.max(dim=1).values
+    bbox_min = target.min(dim=1).values
+    bbox_max = target.max(dim=1).values
     diag = torch.linalg.norm(bbox_max - bbox_min, dim=-1).clamp_min(1e-8)
     thresh = threshold * diag
 

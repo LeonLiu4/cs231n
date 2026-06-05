@@ -1,16 +1,16 @@
 experiment:
   name: single_view_baseline
   seed: 42
-  output_dir: runs/single_view_baseline
+  output_dir: /vol/runs/single_view_baseline
 
 data:
-  shapenet_root: data/ShapeNetCore.v2
-  processed_dir: data/processed_shapenet_1view
-  category: "03001627"  # chair
+  shapenet_root: /vol/data/ShapeNetCore.v2
+  processed_dir: /vol/data/processed_shapenet_1view
+  category: "03001627"
   num_gt_points: 2048
   image_size: 224
   num_views: 1
-  augment: false  # synthetic gray renders; color jitter hurts more than it helps
+  augment: false
   max_train_samples: null
   max_val_samples: null
 
@@ -19,9 +19,9 @@ model:
   num_output_points: 2048
   hidden_dim: 512
   freeze_backbone: true
-  feature_mode: cls_patch_mean  # CLS + mean patch tokens -> richer input for folding decoder
+  feature_mode: cls_patch_mean
   head_type: folding
-  unfreeze_last_blocks: 2  # finetune last 2 ViT blocks on synthetic RGB
+  unfreeze_last_blocks: 2
 
 train:
   batch_size: 8
@@ -31,7 +31,7 @@ train:
   min_lr: 1.0e-6
   grad_clip: 1.0
   weight_decay: 0.01
-  num_workers: 0
+  num_workers: 2
   early_stopping_patience: 15
   log_every: 10
   save_every: 5

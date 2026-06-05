@@ -23,14 +23,16 @@ def main() -> None:
     parser.add_argument("--demo", action="store_true")
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    cfg = ckpt.get("config")
+    if cfg is None:
+        with open(args.config) as f:
+            cfg = yaml.safe_load(f)
+        print("Warning: checkpoint has no saved config; using --config YAML.")
 
     device = get_device()
     _, val_loader = build_dataloaders(cfg, demo=args.demo)
     model = build_model(cfg).to(device)
-
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
 
     metrics = evaluate(model, val_loader, device, cfg["eval"]["f_score_threshold"])

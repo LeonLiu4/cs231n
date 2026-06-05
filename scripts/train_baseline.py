@@ -43,6 +43,7 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
     data_cfg = cfg["data"]
     train_cfg = cfg["train"]
     augment = data_cfg.get("augment", False)
+    render_mode = data_cfg.get("render_mode", "rgb")
 
     if demo:
         train_ds = DemoReconstructionDataset(
@@ -67,6 +68,8 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
             image_size=data_cfg["image_size"],
             max_samples=data_cfg.get("max_train_samples"),
             augment=augment,
+            expected_num_gt_points=data_cfg.get("num_gt_points"),
+            render_mode=render_mode,
         )
         val_ds = ShapeNetReconstructionDataset(
             processed_dir=data_cfg["processed_dir"],
@@ -75,6 +78,8 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
             image_size=data_cfg["image_size"],
             max_samples=data_cfg.get("max_val_samples"),
             augment=False,
+            expected_num_gt_points=data_cfg.get("num_gt_points"),
+            render_mode=render_mode,
         )
 
     train_loader = DataLoader(
@@ -105,6 +110,8 @@ def build_model(cfg: dict) -> torch.nn.Module:
         feature_mode=model_cfg.get("feature_mode", "cls"),
         head_type=model_cfg.get("head_type", "mlp"),
         unfreeze_last_blocks=model_cfg.get("unfreeze_last_blocks", 0),
+        output_tanh=model_cfg.get("output_tanh", True),
+        normalize_output=model_cfg.get("normalize_output", False),
     )
     if num_views <= 1:
         return SingleViewBaseline(**common)
@@ -113,6 +120,7 @@ def build_model(cfg: dict) -> torch.nn.Module:
         fusion=model_cfg.get("fusion", "mean_pool"),
         num_views=num_views,
         fusion_weights=model_cfg.get("fusion_weights"),
+        use_pose=model_cfg.get("use_pose", False),
     )
 
 
@@ -135,6 +143,8 @@ def build_optimizer(model: torch.nn.Module, cfg: dict) -> torch.optim.Optimizer:
 def build_scheduler(optimizer: torch.optim.Optimizer, cfg: dict):
     train_cfg = cfg["train"]
     scheduler_type = train_cfg.get("scheduler", "cosine")
+    min_lr = train_cfg.get("min_lr", 1.0e-6)
+    num_epochs = train_cfg["num_epochs"]
 
     if scheduler_type == "plateau":
         return torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -142,11 +152,31 @@ def build_scheduler(optimizer: torch.optim.Optimizer, cfg: dict):
             mode="min",
             factor=train_cfg.get("plateau_factor", 0.5),
             patience=train_cfg.get("plateau_patience", 5),
-            min_lr=train_cfg.get("min_lr", 1.0e-6),
+            min_lr=min_lr,
         )
+
+    warmup_epochs = train_cfg.get("warmup_epochs", 0)
+    if scheduler_type == "cosine_warmup" and warmup_epochs > 0:
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=train_cfg.get("warmup_start_factor", 0.1),
+            total_iters=warmup_epochs,
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(num_epochs - warmup_epochs, 1),
+            eta_min=min_lr,
+        )
+        return torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[warmup_epochs],
+        )
+
     return torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=train_cfg["num_epochs"],
+        T_max=num_epochs,
+        eta_min=min_lr,
     )
 
 
@@ -161,11 +191,12 @@ def evaluate(model, loader, device, f_threshold: float) -> dict[str, float]:
         images = batch["images"].to(device)
         gt_points = batch["gt_points"].to(device)
         pred_points = model(images, batch["poses"].to(device))
+        batch_size = images.shape[0]
 
         loss, _, _ = chamfer_distance(pred_points, gt_points)
-        total_loss += loss.item()
-        total_f += f_score(pred_points, gt_points, threshold=f_threshold).item()
-        count += 1
+        total_loss += loss.item() * batch_size
+        total_f += f_score(pred_points, gt_points, threshold=f_threshold).item() * batch_size
+        count += batch_size
 
     return {
         "chamfer": total_loss / max(count, 1),

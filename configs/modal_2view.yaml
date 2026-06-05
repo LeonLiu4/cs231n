@@ -1,11 +1,11 @@
 experiment:
   name: baseline_2view_mean_pool
   seed: 42
-  output_dir: runs/baseline_2view
+  output_dir: /vol/runs/baseline_2view
 
 data:
-  shapenet_root: data/ShapeNetCore.v2
-  processed_dir: data/processed_shapenet_2view
+  shapenet_root: /vol/data/ShapeNetCore.v2
+  processed_dir: /vol/data/processed_shapenet_2view
   category: "03001627"
   num_gt_points: 2048
   image_size: 224
@@ -30,7 +30,7 @@ train:
   min_lr: 1.0e-6
   grad_clip: 1.0
   weight_decay: 0.01
-  num_workers: 0
+  num_workers: 2
   scheduler: cosine
   early_stopping_patience: 15
   log_every: 10

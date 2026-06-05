@@ -1,0 +1,2 @@
+-r requirements.txt
+modal>=0.73.0

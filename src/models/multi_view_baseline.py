@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 
 from .dinov2_encoder import DINOv2Encoder
 from .point_cloud_head import build_point_cloud_head
+
+POSE_FEATURE_DIM = 4
 
 
 class MultiViewBaseline(nn.Module):
@@ -27,10 +31,14 @@ class MultiViewBaseline(nn.Module):
         fusion: str = "mean_pool",
         num_views: int = 2,
         fusion_weights: list[float] | None = None,
+        output_tanh: bool = True,
+        normalize_output: bool = False,
+        use_pose: bool = False,
     ) -> None:
         super().__init__()
         self.num_views = num_views
         self.fusion = fusion
+        self.use_pose = use_pose
         self.encoder = DINOv2Encoder(
             dinov2_variant,
             freeze=freeze_backbone,
@@ -38,7 +46,8 @@ class MultiViewBaseline(nn.Module):
             unfreeze_last_blocks=unfreeze_last_blocks,
         )
 
-        head_input_dim = self.encoder.out_dim
+        view_feature_dim = self.encoder.out_dim + (POSE_FEATURE_DIM if use_pose else 0)
+        head_input_dim = view_feature_dim
         if fusion == "concat":
             head_input_dim *= num_views
 
@@ -47,6 +56,8 @@ class MultiViewBaseline(nn.Module):
             input_dim=head_input_dim,
             num_points=num_output_points,
             hidden_dim=hidden_dim,
+            output_tanh=output_tanh,
+            normalize_output=normalize_output,
         )
 
         if fusion == "weighted_mean":
@@ -60,6 +71,25 @@ class MultiViewBaseline(nn.Module):
         flat = images.reshape(batch_size * num_views, *images.shape[2:])
         features = self.encoder(flat)
         return features.view(batch_size, num_views, -1)
+
+    @staticmethod
+    def encode_poses(poses: torch.Tensor) -> torch.Tensor:
+        azimuth = poses[..., 0] * (math.pi / 180.0)
+        elevation = poses[..., 1] * (math.pi / 180.0)
+        return torch.stack(
+            [torch.sin(azimuth), torch.cos(azimuth), torch.sin(elevation), torch.cos(elevation)],
+            dim=-1,
+        )
+
+    def attach_pose_features(
+        self,
+        view_features: torch.Tensor,
+        poses: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if not self.use_pose or poses is None:
+            return view_features
+        pose_features = self.encode_poses(poses).to(view_features.dtype)
+        return torch.cat([view_features, pose_features], dim=-1)
 
     def fuse_features(self, view_features: torch.Tensor) -> torch.Tensor:
         if self.fusion == "mean_pool":
@@ -77,6 +107,6 @@ class MultiViewBaseline(nn.Module):
     def forward(self, images: torch.Tensor, poses: torch.Tensor | None = None) -> torch.Tensor:
         if images.ndim == 4:
             images = images.unsqueeze(1)
-        view_features = self.encode_views(images)
+        view_features = self.attach_pose_features(self.encode_views(images), poses)
         fused = self.fuse_features(view_features)
         return self.head(fused)

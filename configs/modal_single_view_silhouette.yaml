@@ -1,16 +1,19 @@
 experiment:
-  name: baseline_2view_mean_pool
+  name: single_view_silhouette
   seed: 42
-  output_dir: runs/baseline_2view
+  output_dir: /vol/runs/single_view_silhouette
 
 data:
-  shapenet_root: data/ShapeNetCore.v2
-  processed_dir: data/processed_shapenet_2view
+  shapenet_root: /vol/data/ShapeNetCore.v2
+  processed_dir: /vol/data/processed_shapenet_1view_silhouette
+  render_mode: silhouette
   category: "03001627"
   num_gt_points: 2048
   image_size: 224
-  num_views: 2
+  num_views: 1
   augment: false
+  max_train_samples: null
+  max_val_samples: null
 
 model:
   dinov2_variant: dinov2_vitb14
@@ -20,19 +23,18 @@ model:
   feature_mode: cls_patch_mean
   head_type: folding
   unfreeze_last_blocks: 2
-  fusion: concat
+  output_tanh: false
 
 train:
   batch_size: 8
-  num_epochs: 100
+  num_epochs: 120
   lr: 1.0e-4
   backbone_lr: 1.0e-5
   min_lr: 1.0e-6
   grad_clip: 1.0
   weight_decay: 0.01
-  num_workers: 0
-  scheduler: cosine
-  early_stopping_patience: 15
+  num_workers: 2
+  early_stopping_patience: 20
   log_every: 10
   save_every: 5
 
