@@ -1,0 +1,40 @@
+# Baseline 3: Camera Pose Embedding
+# Encodes camera metadata (azimuth, elevation, distance, eye position) via an
+# MLP over the raw 7-D pose vector, added per view before mean-pool fusion.
+experiment:
+  name: b3_camera_pose
+  seed: 42
+  output_dir: runs/baselines/b3_camera_pose
+
+data:
+  processed_dir: data/master_shapenet
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 4
+  augment: true
+  max_train_samples: null
+  max_val_samples: null
+
+model:
+  type: pose_aware
+  pos_embedding: camera_pose
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: cls
+  fusion: mean_pool
+  pose_embed_hidden: 128
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 1.0e-4
+  weight_decay: 0.01
+  num_workers: 0
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01

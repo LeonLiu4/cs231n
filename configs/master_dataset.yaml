@@ -1,0 +1,32 @@
+# Master ShapeNetCore dataset (5000 objects, 64 views each)
+#
+# Modal volume "pose-aware-data" (mount at /data):
+#   shapenet_root: /data/ShapeNetCore.v2
+#   processed_dir: /data/master_shapenet
+# Build: modal run scripts/modal_build_dataset.py
+dataset:
+  shapenet_root: data/ShapeNetCore.v2
+  processed_dir: data/master_shapenet
+  modal_volume: pose-aware-data-v2
+  modal_mount: /data
+  num_gt_points: 2048
+  image_size: 224
+  num_eval_views: 64
+  jitter_per_bin: 2
+  nested_view_counts: [1, 2, 4, 8, 16, 64]
+
+splits:
+  train: 2450          # 7 x 350
+  val: 525             # 7 x 75
+  test_seen: 525       # 7 x 75
+  test_generalization: 1500
+
+# Seven main categories + broad generalization pool
+main_categories:
+  - {synset_id: "03001627", name: chair, count: 500}
+  - {synset_id: "04379243", name: table, count: 500}
+  - {synset_id: "04256520", name: sofa, count: 500}
+  - {synset_id: "02958343", name: car, count: 500}
+  - {synset_id: "02691156", name: airplane, count: 500}
+  - {synset_id: "03642806", name: lamp, count: 500}
+  - {synset_id: "02933112", name: cabinet, count: 500}

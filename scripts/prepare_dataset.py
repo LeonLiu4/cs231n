@@ -17,7 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.camera import default_view_poses
+from src.data.camera import eval_view_indices, pose_for_bin, view_index_to_bins
 from src.data.render import normalize_mesh, render_rgb_view, sample_surface_points
 
 
@@ -48,11 +48,15 @@ def process_model(
     gt_points = sample_surface_points(mesh, num_gt_points)
     np.save(output_dir / "gt_points.npy", gt_points)
 
-    for view_idx, pose in enumerate(default_view_poses(num_views)):
-        rgb = render_rgb_view(mesh, pose, image_size=image_size)
-        from PIL import Image
+    from PIL import Image
 
-        Image.fromarray((rgb * 255).astype(np.uint8)).save(output_dir / f"view_{view_idx:02d}.png")
+    for view_idx in eval_view_indices(num_views):
+        az_bin, el_bin = view_index_to_bins(view_idx)
+        pose = pose_for_bin(az_bin, el_bin)
+        rgb = render_rgb_view(mesh, pose, image_size=image_size)
+        Image.fromarray((rgb * 255).astype(np.uint8)).save(
+            output_dir / f"view_{view_idx:02d}.png"
+        )
         np.save(output_dir / f"view_{view_idx:02d}_pose.npy", pose.pose_vector())
 
 

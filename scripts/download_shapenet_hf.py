@@ -13,11 +13,23 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 REPO_ID = "ShapeNet/ShapeNetCore"
-DEFAULT_CATEGORIES = ["03001627"]  # chair
+
+# Master dataset: seven main categories
+MASTER_MAIN_SYNSETS = [
+    "03001627",  # chair
+    "04379243",  # table
+    "04256520",  # sofa
+    "02958343",  # car
+    "02691156",  # airplane
+    "03642806",  # lamp
+    "02933112",  # cabinet
+]
+DEFAULT_CATEGORIES = MASTER_MAIN_SYNSETS[:1]  # chair only for quick tests
 
 SYNSETS = {
     "02691156": "airplane",
     "02773838": "bag",
+    "02933112": "cabinet",
     "02954340": "cap",
     "02958343": "car",
     "03001627": "chair",
@@ -30,7 +42,9 @@ SYNSETS = {
     "03948459": "pistol",
     "04099429": "rocket",
     "04225987": "skateboard",
+    "04256520": "sofa",
     "04379243": "table",
+    "04530566": "watercraft",
 }
 
 
@@ -107,15 +121,16 @@ def extract_synset(zip_path: Path, output_root: Path, category: str) -> Path:
         # Some zips contain 03001627/<id>/... ; others may nest one level deeper.
         zf.extractall(category_dir)
 
-    # Flatten if zip extracted as category/category/...
+    # Flatten if zip extracted as category/category/<model_id>/...
     nested = category_dir / category
-    if nested.is_dir() and not any(category_dir.glob("*/models/model_normalized.obj")):
+    while nested.is_dir():
         for child in nested.iterdir():
             dest = category_dir / child.name
             if dest.exists():
                 continue
             shutil.move(str(child), str(dest))
         nested.rmdir()
+        nested = category_dir / category
 
     return category_dir
 
@@ -132,6 +147,31 @@ def verify_category(root: Path, category: str) -> int:
         if obj.exists():
             count += 1
     return count
+
+
+def download_categories(
+    categories: list[str],
+    output_root: Path,
+    cache_dir: Path,
+    token: str | None = None,
+) -> dict[str, int]:
+    """Download and extract synset zips. Returns synset_id -> mesh count."""
+    resolved_token = check_auth(token)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    output_root.mkdir(parents=True, exist_ok=True)
+    counts: dict[str, int] = {}
+    for category in categories:
+        zip_path = download_synset_zip(category, cache_dir, resolved_token)
+        print(f"Extracting {zip_path.name} -> {output_root / category}")
+        extract_synset(zip_path, output_root, category)
+        count = verify_category(output_root, category)
+        counts[category] = count
+        name = SYNSETS.get(category, "unknown")
+        print(f"Ready: {count} meshes in {output_root / category} ({name})")
+        if zip_path.is_file():
+            zip_path.unlink()
+            print(f"Removed zip to save disk: {zip_path.name}")
+    return counts
 
 
 def main() -> None:
@@ -155,6 +195,11 @@ def main() -> None:
         help=f"Synset ids to download (default: chair {DEFAULT_CATEGORIES[0]})",
     )
     parser.add_argument(
+        "--master-main",
+        action="store_true",
+        help="Download all seven master main categories (chair, table, sofa, car, airplane, lamp, cabinet)",
+    )
+    parser.add_argument(
         "--list-categories",
         action="store_true",
         help="Print common synset ids and exit",
@@ -168,21 +213,24 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.list_categories:
+        print("Master main categories:")
+        for synset in MASTER_MAIN_SYNSETS:
+            print(f"  {synset}  {SYNSETS.get(synset, '?')}")
+        print("\nOther common synsets:")
         for synset, name in sorted(SYNSETS.items()):
-            print(f"{synset}  {name}")
+            if synset not in MASTER_MAIN_SYNSETS:
+                print(f"  {synset}  {name}")
         return
 
-    token = check_auth(args.token)
-    args.cache_dir.mkdir(parents=True, exist_ok=True)
-    args.output_root.mkdir(parents=True, exist_ok=True)
+    if args.master_main:
+        args.categories = MASTER_MAIN_SYNSETS
 
-    for category in args.categories:
-        zip_path = download_synset_zip(category, args.cache_dir, token)
-        print(f"Extracting {zip_path.name} -> {args.output_root / category}")
-        extract_synset(zip_path, args.output_root, category)
-        count = verify_category(args.output_root, category)
-        name = SYNSETS.get(category, "unknown")
-        print(f"Ready: {count} meshes in {args.output_root / category} ({name})")
+    download_categories(
+        args.categories,
+        args.output_root,
+        args.cache_dir,
+        token=args.token,
+    )
 
     print(f"\nShapeNetCore root: {args.output_root.resolve()}")
     print("Next: python scripts/prepare_dataset.py --num-views 2 --max-samples 500")

@@ -1,0 +1,39 @@
+# Baseline 1: 2D Positional Embedding
+# Standard ViT-style learned patch positions only; no camera or viewpoint info.
+# Uses DINOv2 patch tokens (which carry the ViT 2-D positional structure) via
+# the cls_patch_mean feature mode, fused by mean pooling.
+experiment:
+  name: b1_2d_positional
+  seed: 42
+  output_dir: runs/baselines/b1_2d_positional
+
+data:
+  processed_dir: data/master_shapenet
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 4
+  augment: true
+  max_train_samples: null
+  max_val_samples: null
+
+model:
+  type: multi_view
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: cls_patch_mean
+  fusion: mean_pool
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 1.0e-4
+  weight_decay: 0.01
+  num_workers: 0
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01

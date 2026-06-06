@@ -1,0 +1,33 @@
+experiment:
+  name: master_4view_baseline
+  seed: 42
+  output_dir: runs/master_4view_baseline
+
+data:
+  processed_dir: data/master_shapenet
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 4  # eval schedule: 4 cardinal azimuths at 30° elev (see EVAL_SCHEDULES)
+  augment: true  # train: sample from train_views/ pool; val: fixed eval views (augment false)
+  max_train_samples: null
+  max_val_samples: null
+
+model:
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  fusion: mean_pool
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 1.0e-4
+  weight_decay: 0.01
+  num_workers: 0
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01

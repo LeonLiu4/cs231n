@@ -1,0 +1,38 @@
+# Baseline 5: Multi-View Model
+# Uses multiple views without geometry-aware positional embeddings
+# (plain mean-pool fusion of per-view CLS features).
+experiment:
+  name: b5_multi_view
+  seed: 42
+  output_dir: runs/baselines/b5_multi_view
+
+data:
+  processed_dir: data/master_shapenet
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 4
+  augment: true
+  max_train_samples: null
+  max_val_samples: null
+
+model:
+  type: multi_view
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: cls
+  fusion: mean_pool
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 1.0e-4
+  weight_decay: 0.01
+  num_workers: 0
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01

@@ -22,6 +22,7 @@ from src.data.dataset import DemoReconstructionDataset, ShapeNetReconstructionDa
 from src.losses.chamfer import chamfer_distance
 from src.metrics.reconstruction import f_score
 from src.models.multi_view_baseline import MultiViewBaseline
+from src.models.pose_aware_baseline import PoseAwareMultiViewBaseline
 from src.models.single_view_baseline import SingleViewBaseline
 
 
@@ -95,6 +96,16 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
 
 
 def build_model(cfg: dict) -> torch.nn.Module:
+    """Build the model for a baseline.
+
+    Selection is config-driven via ``model.type``:
+        "single_view"  -> SingleViewBaseline (K=1, maximum ambiguity)
+        "multi_view"   -> MultiViewBaseline (plain fusion, no pose/view info)
+        "pose_aware"   -> PoseAwareMultiViewBaseline, with ``model.pos_embedding``
+                          in {"view_id", "camera_pose", "geometry_aware"}
+        "auto"         -> single_view if num_views<=1 else multi_view (legacy)
+    Older configs without ``model.type`` keep the legacy num_views behavior.
+    """
     model_cfg = cfg["model"]
     num_views = cfg["data"]["num_views"]
     common = dict(
@@ -106,8 +117,23 @@ def build_model(cfg: dict) -> torch.nn.Module:
         head_type=model_cfg.get("head_type", "mlp"),
         unfreeze_last_blocks=model_cfg.get("unfreeze_last_blocks", 0),
     )
-    if num_views <= 1:
+
+    model_type = model_cfg.get("type", "auto")
+
+    if model_type == "single_view" or (model_type == "auto" and num_views <= 1):
         return SingleViewBaseline(**common)
+
+    if model_type == "pose_aware":
+        return PoseAwareMultiViewBaseline(
+            **common,
+            fusion=model_cfg.get("fusion", "mean_pool"),
+            num_views=num_views,
+            fusion_weights=model_cfg.get("fusion_weights"),
+            pos_embedding=model_cfg.get("pos_embedding", "geometry_aware"),
+            pose_embed_hidden=model_cfg.get("pose_embed_hidden", 128),
+            geometry_num_freqs=model_cfg.get("geometry_num_freqs", 6),
+        )
+
     return MultiViewBaseline(
         **common,
         fusion=model_cfg.get("fusion", "mean_pool"),
