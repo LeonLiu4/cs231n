@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Generate report figures for the LaTeX writeup into ``figures/report/``.
 
-Most figures use real assets (renders, meshes, GT point clouds, dataset
-counts). Five figures depend on trained-model outputs that do not exist yet
-(baseline_comparison, chamfer_plot, fscore_plot, qualitative_results,
-failure_cases); those are emitted as clearly labeled placeholders with the
-correct layout/axes so the report compiles and can be swapped out later.
+All figures here use real assets (renders, meshes, GT point clouds, dataset
+counts) or are schematic diagrams. Figures that depend on trained-model
+outputs (baseline_comparison, qualitative_results, failure_cases) are emitted
+as clearly labeled placeholders with the correct layout. Results figures
+(chamfer_plot, fscore_plot) are generated separately by
+scripts/collect_sweep_results.py from measured evaluation numbers.
 
 Usage:
     python3 scripts/make_report_figures.py
@@ -451,6 +452,97 @@ def fig_nested_views():
 # ----------------------------------------------------------------------------
 # 9. embedding_variants.png
 # ----------------------------------------------------------------------------
+def fig_nested_views_3d(center_pts=None):
+    """3D version of the nested-view protocol: cameras spread over the dome.
+
+    Active cameras vary in BOTH azimuth and elevation (vertical angle) so the
+    figure shows the full 3D viewing dome; the selection stays nested
+    (smaller K is a prefix of larger K).
+    """
+    from src.data.camera import ELEVATION_LEVELS, pose_for_bin
+
+    ks = [1, 2, 4, 8, 16]
+    # Curated nested schedule that also spreads across the 4 elevation rings.
+    # Each tuple is (azimuth_bin, elevation_bin); elevation_bin in {0..3}.
+    nested3d = [
+        (0, 1), (8, 2),                                  # K=1, +1 -> K=2
+        (4, 0), (12, 3),                                 # -> K=4
+        (2, 2), (6, 0), (10, 3), (14, 1),                # -> K=8
+        (1, 3), (3, 1), (5, 2), (7, 0),
+        (9, 1), (11, 3), (13, 0), (15, 2),               # -> K=16
+    ]
+    active_for_k = {k: nested3d[:k] for k in ks}
+
+    # full dome reference: every azimuth x elevation camera position
+    dome = {}
+    for el in range(len(ELEVATION_LEVELS)):
+        for az in range(NUM_AZIMUTH):
+            dome[(az, el)] = pose_for_bin(az, el).eye_position()
+    radius = np.linalg.norm(next(iter(dome.values())))
+    dome = {k: v / radius for k, v in dome.items()}
+
+    # dashed ring per elevation for depth context
+    rings = []
+    for el in range(len(ELEVATION_LEVELS)):
+        r = np.array([dome[(az, el)] for az in range(NUM_AZIMUTH)])
+        rings.append(np.vstack([r, r[:1]]))
+
+    # small object point cloud at the centre
+    if center_pts is not None and len(center_pts):
+        obj = center_pts.astype(float).copy()
+        obj -= obj.mean(0)
+        # PCA-align so the thinnest axis is vertical -> object lies flat on the dome floor
+        _, _, vt = np.linalg.svd(obj, full_matrices=False)
+        obj = obj @ vt.T  # columns ordered by decreasing variance
+        obj = obj[:, [0, 1, 2]]
+        obj /= (np.abs(obj).max() + 1e-8)
+        obj *= 0.34
+        obj[:, 2] *= 0.9  # keep it sitting near the floor
+        if len(obj) > 1200:
+            obj = obj[np.linspace(0, len(obj) - 1, 1200, dtype=int)]
+    else:
+        obj = None
+
+    fig = plt.figure(figsize=(15, 3.8))
+    for i, k in enumerate(ks):
+        ax = fig.add_subplot(1, len(ks), i + 1, projection="3d")
+        active = set(active_for_k[k])
+
+        for ring in rings:
+            ax.plot(ring[:, 0], ring[:, 1], ring[:, 2], color="#d3dae5", lw=0.8,
+                    linestyle=(0, (4, 3)), zorder=1)
+
+        if obj is not None:
+            ax.scatter(obj[:, 0], obj[:, 1], obj[:, 2], c=obj[:, 2], cmap="viridis", s=2.0, linewidths=0)
+        else:
+            ax.scatter([0], [0], [0], marker="*", s=160, color=OURS)
+
+        for key, e in dome.items():
+            on = key in active
+            if on:
+                ax.scatter(*e, color=ACCENT, s=44, depthshade=False, edgecolor="white",
+                           linewidths=0.4, zorder=5)
+                d = (-e) * 0.42
+                ax.quiver(e[0], e[1], e[2], d[0], d[1], d[2], color=ACCENT, lw=1.4,
+                          arrow_length_ratio=0.35, zorder=4)
+            else:
+                ax.scatter(*e, color="#dde3ec", s=11, depthshade=False, zorder=2)
+
+        ax.set_title(f"K = {k}", fontsize=13, pad=-2)
+        ax.set_box_aspect((1, 1, 0.85))
+        ax.view_init(elev=22, azim=-62)
+        ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1); ax.set_zlim(-0.2, 1.15)
+        ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
+        ax.grid(False)
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            axis.set_pane_color((1, 1, 1, 0))
+            axis.line.set_color((1, 1, 1, 0))
+
+    fig.suptitle("Nested Evaluation Views in 3D (cameras spread across the viewing dome)",
+                 fontsize=15, fontweight="bold", y=1.02)
+    _save(fig, "nested_views_3d.png")
+
+
 def fig_embedding_variants():
     fig, ax = plt.subplots(figsize=(12, 5.0))
     ax.set_xlim(0, 12)
@@ -481,9 +573,78 @@ def fig_embedding_variants():
     _save(fig, "embedding_variants.png")
 
 
-# ----------------------------------------------------------------------------
-# 10. metric_intuition.png
-# ----------------------------------------------------------------------------
+def fig_object_detail(synset="03001627", model_id="3f4f6f64f5ae57a14038d588fd1342f",
+                      category="chair"):
+    """Detailed render/GT breakdown for a single object (the baseline qual subject)."""
+    from src.data.camera import ELEVATION_LEVELS, NESTED_VIEW_SCHEDULES, pose_for_bin
+    from src.data.render import sample_surface_points
+
+    mesh_path = ROOT / "data/ShapeNetCore.v2" / synset / model_id / "models/model_normalized.obj"
+    mesh_up = _load_mesh(mesh_path, upright=True)
+    mesh_raw = _load_mesh(mesh_path, upright=False)
+    gt = sample_surface_points(mesh_raw, 2048)
+
+    el_bin = 1  # all schedule views sit on the 30-degree ring
+    n_az = 16
+    ring_imgs = [_render_mesh_pil(mesh_up, image_size=150, bin_az=a, bin_el=el_bin) for a in range(n_az)]
+    k4_bins = {a for a, _ in NESTED_VIEW_SCHEDULES[4]}
+
+    fig = plt.figure(figsize=(15, 8.4))
+    gs = fig.add_gridspec(3, 8, height_ratios=[1.5, 1, 1], hspace=0.32, wspace=0.18)
+
+    ax_hero = fig.add_subplot(gs[0, 0:2])
+    ax_hero.imshow(_render_mesh_pil(mesh_up, image_size=360))
+    ax_hero.set_title("Mesh render", fontsize=13)
+    ax_hero.axis("off")
+
+    ax_gt = fig.add_subplot(gs[0, 2:4], projection="3d")
+    _scatter3d(ax_gt, gt, s=2.0)
+    ax_gt.set_title("GT point cloud (2048 pts)", fontsize=13)
+
+    ax_txt = fig.add_subplot(gs[0, 4:8])
+    ax_txt.axis("off")
+    lines = [
+        (f"Object   {synset} / {model_id[:16]}…", True),
+        (f"Category   {category}", False),
+        ("", False),
+        ("Renders per object", True),
+        (f"  Training renders   32   (16 azimuth bins  x  2 jitter)", False),
+        (f"  Evaluation bank   16 views   (30° elevation ring)", False),
+        (f"  Nested eval K   1 ⊂ 2 ⊂ 4 ⊂ 8 ⊂ 16", False),
+        ("", False),
+        ("Per-render / target", True),
+        (f"  Image size   224 x 224 RGB", False),
+        (f"  GT points   2048", False),
+        (f"  Elevation levels   {', '.join(f'{int(e)}°' for e in ELEVATION_LEVELS)}", False),
+        ("", False),
+        ("Qualitative figure used K = 4 (4 input views, highlighted below)", False),
+    ]
+    y = 0.98
+    for text, bold in lines:
+        ax_txt.text(0.0, y, text, transform=ax_txt.transAxes, va="top", ha="left",
+                    fontsize=11.5 if bold else 10.5, color=INK if bold else MUTED,
+                    fontweight="bold" if bold else "normal")
+        y -= 0.072
+
+    for i, img in enumerate(ring_imgs):
+        r = 1 + i // 8
+        c = i % 8
+        ax = fig.add_subplot(gs[r, c])
+        ax.imshow(img)
+        ax.set_xticks([]); ax.set_yticks([])
+        used = i in k4_bins
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color(OURS if used else PANEL_EDGE)
+            spine.set_linewidth(2.4 if used else 0.8)
+        ax.set_title(f"az{i:02d}" + ("  ★" if used else ""), fontsize=8.5,
+                     color=OURS if used else MUTED, pad=2)
+
+    fig.suptitle(f"Object detail: {category} ({synset}/{model_id[:10]}…) — 16-view evaluation bank",
+                 fontsize=15, fontweight="bold", y=0.97)
+    _save(fig, f"object_detail_{synset}_{model_id}.png")
+
+
 def fig_embedding_comparison():
     """Side-by-side contrast of what each embedding variant injects."""
     variants = [
@@ -635,42 +796,20 @@ def fig_baseline_comparison(hero_dir):
     _save(fig, "baseline_comparison.png")
 
 
-# ----------------------------------------------------------------------------
-# 12 / 13. chamfer_plot.png, fscore_plot.png  (axis templates, no fake data)
-# ----------------------------------------------------------------------------
-def _results_plot(name, ylabel, title, better):
-    ks = [1, 2, 4, 8, 16]
-    fig, ax = plt.subplots(figsize=(7.2, 4.8))
-    series = ["2D Positional", "View-ID", "Camera Pose", "Geometry-Aware"]
-    colors = [ACCENT, "#8a5cf6", "#e0892f", OURS]
-    for s, c in zip(series, colors):
-        ax.plot([], [], color=c, marker="o", label=s)
-    ax.set_xticks(ks)
-    ax.set_xlabel("Number of input views (K)")
-    ax.set_ylabel(ylabel)
-    ax.set_xlim(0.5, 16.5)
-    ax.set_ylim(0, 1)
-    ax.set_title(title)
-    ax.legend(frameon=False, fontsize=10, loc="upper right")
-    ax.text(0.5, 0.5, f"Pending results\n({better})", transform=ax.transAxes, ha="center", va="center",
-            fontsize=14, color=MUTED, style="italic")
-    ax.spines[["top", "right"]].set_visible(False)
-    _save(fig, name)
-
-
-def fig_chamfer_plot():
-    _results_plot("chamfer_plot.png", "Chamfer distance", "Chamfer vs. Number of Views", "lower is better")
-
-
-def fig_fscore_plot():
-    _results_plot("fscore_plot.png", "F-score @ 1% bbox", "F-score vs. Number of Views", "higher is better")
+# NOTE: chamfer_plot.png and fscore_plot.png are produced from real evaluation
+# results by scripts/collect_sweep_results.py, not here. This script no longer
+# emits results figures so it cannot introduce numbers that aren't measured.
 
 
 # ----------------------------------------------------------------------------
 # 14. qualitative_results.png  (real input + GT, model cols pending)
 # ----------------------------------------------------------------------------
 def fig_qualitative_results(rows):
-    """rows: list of (label, input_PIL_image, gt_points)."""
+    """rows: list of (label, input_PIL_image, gt_points).
+
+    Shows the real input render and ground-truth point cloud. The model
+    prediction columns are placeholders until trained-model outputs exist.
+    """
     n = len(rows)
     fig = plt.figure(figsize=(13, 3.3 * n))
     gs = fig.add_gridspec(n, 4, wspace=0.1, hspace=0.16)
@@ -679,8 +818,8 @@ def fig_qualitative_results(rows):
         a0 = fig.add_subplot(gs[r, 0]); a0.imshow(img)
         a0.set_xticks([]); a0.set_yticks([])
         a0.set_ylabel(label, fontsize=12, fontweight="bold")
-        a1 = fig.add_subplot(gs[r, 1]); _placeholder(a1, "pending")
-        a2 = fig.add_subplot(gs[r, 2]); _placeholder(a2, "pending")
+        a1 = fig.add_subplot(gs[r, 1]); _placeholder(a1, "Baseline\n(pending)")
+        a2 = fig.add_subplot(gs[r, 2]); _placeholder(a2, "Ours\n(pending)")
         a3 = fig.add_subplot(gs[r, 3], projection="3d"); _scatter3d(a3, pts)
         if r == 0:
             a0.set_title(cols[0], fontsize=13)
@@ -694,6 +833,8 @@ def fig_qualitative_results(rows):
 # ----------------------------------------------------------------------------
 # 15. failure_cases.png  (real renders + expected failure annotations)
 # ----------------------------------------------------------------------------
+
+
 def fig_failure_cases(chair_img, airplane_img):
     cases = [
         (chair_img, "Thin structures (chair legs)"),
@@ -732,8 +873,6 @@ def main():
     fig_embedding_variants()
     fig_metric_intuition()
     fig_baseline_comparison(airplane_dir)
-    fig_chamfer_plot()
-    fig_fscore_plot()
     fig_qualitative_results(
         [
             ("airplane", airplane_img, _load_points(airplane_dir)),
