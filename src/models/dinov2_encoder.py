@@ -33,10 +33,12 @@ class DINOv2Encoder(nn.Module):
 
         if feature_mode == "cls_patch_mean":
             self.out_dim = self.embed_dim * 2
-        elif feature_mode == "cls":
+        elif feature_mode in ("cls", "patch_tokens"):
             self.out_dim = self.embed_dim
         else:
             raise ValueError(f"Unknown feature_mode: {feature_mode}")
+
+        self.patch_size = getattr(self.model, "patch_size", 14)
 
     @property
     def has_trainable_backbone(self) -> bool:
@@ -57,6 +59,8 @@ class DINOv2Encoder(nn.Module):
 
         cls_token = features["x_norm_clstoken"]
         patch_tokens = features["x_norm_patchtokens"]
+        if self.feature_mode == "patch_tokens":
+            return patch_tokens
         if self.feature_mode == "cls_patch_mean":
             return torch.cat([cls_token, patch_tokens.mean(dim=1)], dim=-1)
         raise ValueError(f"Unknown feature_mode: {self.feature_mode}")

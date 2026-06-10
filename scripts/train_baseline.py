@@ -23,6 +23,7 @@ from src.losses.chamfer import chamfer_distance
 from src.metrics.reconstruction import f_score
 from src.models.multi_view_baseline import MultiViewBaseline
 from src.models.pose_aware_baseline import PoseAwareMultiViewBaseline
+from src.models.ray_transformer import RayTransformerReconstructor
 from src.models.single_view_baseline import SingleViewBaseline
 
 
@@ -68,6 +69,7 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
             image_size=data_cfg["image_size"],
             max_samples=data_cfg.get("max_train_samples"),
             augment=augment,
+            category=data_cfg.get("category"),
         )
         val_ds = ShapeNetReconstructionDataset(
             processed_dir=data_cfg["processed_dir"],
@@ -76,6 +78,7 @@ def build_dataloaders(cfg: dict, demo: bool) -> tuple[DataLoader, DataLoader]:
             image_size=data_cfg["image_size"],
             max_samples=data_cfg.get("max_val_samples"),
             augment=False,
+            category=data_cfg.get("category"),
         )
 
     train_loader = DataLoader(
@@ -103,6 +106,8 @@ def build_model(cfg: dict) -> torch.nn.Module:
         "multi_view"   -> MultiViewBaseline (plain fusion, no pose/view info)
         "pose_aware"   -> PoseAwareMultiViewBaseline, with ``model.pos_embedding``
                           in {"view_id", "camera_pose", "geometry_aware"}
+        "ray_transformer" -> RayTransformerReconstructor (patch tokens + Transformer
+                          fusion), with ``model.pos_embedding`` adding "2d_positional"
         "auto"         -> single_view if num_views<=1 else multi_view (legacy)
     Older configs without ``model.type`` keep the legacy num_views behavior.
     """
@@ -119,6 +124,22 @@ def build_model(cfg: dict) -> torch.nn.Module:
     )
 
     model_type = model_cfg.get("type", "auto")
+
+    if model_type == "ray_transformer":
+        return RayTransformerReconstructor(
+            **common,
+            num_views=num_views,
+            pos_embedding=model_cfg.get("pos_embedding", "geometry_aware"),
+            image_size=cfg["data"].get("image_size", 224),
+            d_model=model_cfg.get("d_model", 384),
+            nhead=model_cfg.get("nhead", 6),
+            enc_layers=model_cfg.get("enc_layers", 4),
+            dec_layers=model_cfg.get("dec_layers", 2),
+            dim_feedforward=model_cfg.get("dim_feedforward", 1024),
+            num_queries=model_cfg.get("num_queries", 256),
+            geometry_num_freqs=model_cfg.get("geometry_num_freqs", 6),
+            pose_embed_hidden=model_cfg.get("pose_embed_hidden", 128),
+        )
 
     if model_type == "single_view" or (model_type == "auto" and num_views <= 1):
         return SingleViewBaseline(**common)

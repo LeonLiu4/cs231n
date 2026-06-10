@@ -50,30 +50,43 @@ class FoldingPointCloudHead(nn.Module):
         self.grid_side = grid_side
         self.grid_count = grid_side * grid_side
 
-        coords = torch.linspace(-0.5, 0.5, grid_side)
+        # Grid spans [-1, 1] so per-point coordinates are on the same scale as the
+        # LayerNorm'd global code below; a [-0.5, 0.5] grid gets washed out by the
+        # large-magnitude DINOv2 feature and collapses every point to one spot.
+        coords = torch.linspace(-1.0, 1.0, grid_side)
         grid_y, grid_x = torch.meshgrid(coords, coords, indexing="ij")
         grid = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1)], dim=-1)
         self.register_buffer("grid", grid)
 
+        # Normalize + project the global feature to a bounded-magnitude code so
+        # the folding MLPs can actually attend to the grid coordinates.
+        self.feature_norm = nn.LayerNorm(input_dim)
+        code_dim = min(hidden_dim, 512)
+        self.feature_proj = nn.Sequential(
+            nn.Linear(input_dim, code_dim),
+            nn.GELU(),
+        )
+
         self.fold1 = nn.Sequential(
-            nn.Linear(input_dim + 2, hidden_dim),
-            nn.ReLU(),
+            nn.Linear(code_dim + 2, hidden_dim),
+            nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(hidden_dim, 3),
         )
         self.fold2 = nn.Sequential(
-            nn.Linear(input_dim + 3, hidden_dim),
-            nn.ReLU(),
+            nn.Linear(code_dim + 3, hidden_dim),
+            nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(hidden_dim, 3),
         )
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         batch_size = features.shape[0]
+        code = self.feature_proj(self.feature_norm(features))
         grid = self.grid.unsqueeze(0).expand(batch_size, -1, -1)
-        global_feat = features.unsqueeze(1).expand(-1, self.grid_count, -1)
+        global_feat = code.unsqueeze(1).expand(-1, self.grid_count, -1)
 
         fold1_in = torch.cat([global_feat, grid], dim=-1)
         coarse = self.fold1(fold1_in)

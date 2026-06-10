@@ -30,6 +30,24 @@ This trains the model (writes `runs/baselines/<name>/best.pt`, `last.pt`,
 scripts/baselines/run_all.sh
 ```
 
+## Run on Modal GPU (full 2000-object dataset)
+
+The master dataset lives on Modal volume `pose-aware-data-v2`. Local `data/master_shapenet`
+only has a small preview — use Modal for real training:
+
+```bash
+# One baseline
+modal run --detach scripts/modal_train_baseline.py --config configs/baselines/b5_multi_view.yaml
+
+# All six baselines (sequential, one GPU job each; keep laptop open or use --detach)
+modal run --detach scripts/modal_train_baseline.py --all-baselines
+
+# Pull eval metrics after training
+python scripts/collect_baseline_results.py --from-modal
+```
+
+Checkpoints and `eval_results.json` are written to `/data/runs/baselines/<name>/` on the volume.
+
 ## Useful environment variables
 
 | Var | Effect |

@@ -1,0 +1,45 @@
+# Ray-Transformer / Camera-Pose variant.
+# Patch tokens + 2D patch code + MLP over the 7-D pose vector -> Transformer fusion.
+experiment:
+  name: rt_camera_pose
+  seed: 42
+  output_dir: runs/baselines/rt_camera_pose
+
+data:
+  processed_dir: data/master_shapenet
+  num_gt_points: 2048
+  image_size: 224
+  num_views: 4
+  augment: true
+  max_train_samples: null
+  max_val_samples: null
+
+model:
+  type: ray_transformer
+  pos_embedding: camera_pose
+  dinov2_variant: dinov2_vitb14
+  num_output_points: 2048
+  hidden_dim: 512
+  freeze_backbone: true
+  feature_mode: patch_tokens
+  d_model: 384
+  nhead: 6
+  enc_layers: 4
+  dec_layers: 2
+  dim_feedforward: 1024
+  num_queries: 256
+  geometry_num_freqs: 6
+  pose_embed_hidden: 128
+
+train:
+  batch_size: 8
+  num_epochs: 100
+  lr: 2.0e-4
+  weight_decay: 0.01
+  num_workers: 0
+  early_stopping_patience: 15
+  log_every: 10
+  save_every: 5
+
+eval:
+  f_score_threshold: 0.01
